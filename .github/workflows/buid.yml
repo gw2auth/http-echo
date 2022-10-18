@@ -1,0 +1,32 @@
+name: "Build"
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '^1.19.2'
+      - run: go build
+      - uses: actions/upload-artifact@v2
+        if: matrix.os == 'windows-latest'
+        with:
+          name: http-echo-${{ matrix.os }}
+          path: http-echo.exe
+      - uses: actions/upload-artifact@v2
+        if: matrix.os != 'windows-latest'
+        with:
+          name: http-echo-${{ matrix.os }}
+          path: http-echo
