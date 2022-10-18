@@ -20,12 +20,12 @@ jobs:
         with:
           go-version: '^1.19.2'
       - run: go build
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         if: matrix.os == 'windows-latest'
         with:
           name: http-echo-${{ matrix.os }}
           path: http-echo.exe
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v3
         if: matrix.os != 'windows-latest'
         with:
           name: http-echo-${{ matrix.os }}
