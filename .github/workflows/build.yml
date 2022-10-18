@@ -15,17 +15,15 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - run: |
-          echo "OUTPUT_FILE_NAME=http-echo" >> $GITHUB_ENV
-        if: matrix.os != 'windows-latest'
-      - run: |
-          echo "OUTPUT_FILE_NAME=http-echo.exe" >> $GITHUB_ENV
-        if: matrix.os == 'windows-latest'
+      - if: matrix.os != 'windows-latest'
+        run: echo "OUTPUT_FILE_NAME=http-echo" >> $GITHUB_ENV
+      - if: matrix.os == 'windows-latest'
+        run: echo "OUTPUT_FILE_NAME=http-echo.exe" >> $GITHUB_ENV
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v3
         with:
           go-version: '^1.19.2'
-      - run: go build
+      - run: go build -o ${{ env.OUTPUT_FILE_NAME }}
       - if: matrix.os != 'windows-latest'
         run: chmod +x ${{ env.OUTPUT_FILE_NAME }}
       - uses: actions/upload-artifact@v3
