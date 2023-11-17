@@ -6,5 +6,5 @@ RUN go build -o app
 
 FROM alpine:latest
 WORKDIR /root/
-COPY --from=0 /go/src/github.com/gw2auth/http-echo/app ./
-CMD ["./app"]
+COPY --from=0 /go/src/github.com/gw2auth/http-echo/app ./app
+CMD ["/root/app"]
