@@ -2,70 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
-	"io"
 	"log"
 	"net/http"
-	"os"
 	"os/signal"
-	"sort"
+	"syscall"
 )
-
-func mapKeysSorted[K comparable, V any](m map[K]V, less func(k1, k2 K) bool) <-chan K {
-	sortedKeys := make([]K, 0, len(m))
-
-	for k := range m {
-		sortedKeys = append(sortedKeys, k)
-	}
-
-	sort.Slice(sortedKeys, func(i, j int) bool { return less(sortedKeys[i], sortedKeys[j]) })
-
-	ch := make(chan K)
-
-	go func() {
-		for _, k := range sortedKeys {
-			ch <- k
-		}
-
-		close(ch)
-	}()
-
-	return ch
-}
-
-type echoHandler struct{}
-
-func (hf echoHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain")
-
-	_, _ = w.Write([]byte(r.Method))
-	_, _ = w.Write([]byte(" "))
-	_, _ = w.Write([]byte(r.RequestURI))
-	_, _ = w.Write([]byte(" "))
-	_, _ = w.Write([]byte(r.Proto))
-	_, _ = w.Write([]byte("\n"))
-	_, _ = w.Write([]byte("Host: "))
-	_, _ = w.Write([]byte(r.Host))
-
-	for name := range mapKeysSorted(r.Header, func(k1, k2 string) bool { return k1 < k2 }) {
-		_, _ = w.Write([]byte("\n"))
-		_, _ = w.Write([]byte(name))
-		_, _ = w.Write([]byte(": "))
-
-		for i, v := range r.Header[name] {
-			if i > 0 {
-				_, _ = w.Write([]byte(","))
-			}
-
-			_, _ = w.Write([]byte(v))
-		}
-	}
-
-	if r.Body != nil {
-		_, _ = w.Write([]byte("\n\n"))
-		_, _ = io.Copy(w, r.Body)
-	}
-}
 
 func main() {
 	var listenAddr string
@@ -74,6 +17,9 @@ func main() {
 	flag.BoolVar(&enableKeepAlive, "keepalive", true, "enable keepalive; true or false")
 	flag.Parse()
 
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
 	server := http.Server{
 		Addr:    listenAddr,
 		Handler: echoHandler{},
@@ -81,22 +27,35 @@ func main() {
 
 	server.SetKeepAlivesEnabled(enableKeepAlive)
 
-	closed := make(chan struct{})
+	if err := listenAndServe(ctx, &server); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func listenAndServe(ctx context.Context, server *http.Server) error {
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(errors.New("defer"))
+
+	shutdownErrCh := make(chan error)
 	go func() {
-		sigint := make(chan os.Signal, 1)
-		signal.Notify(sigint, os.Interrupt)
-		<-sigint
+		defer close(shutdownErrCh)
 
+		<-ctx.Done()
 		if err := server.Shutdown(context.Background()); err != nil {
-			log.Printf("HTTP server shutdown error: %v", err)
+			shutdownErrCh <- err
 		}
-
-		close(closed)
 	}()
 
-	if err := server.ListenAndServe(); err != http.ErrServerClosed {
-		log.Fatalf("HTTP server ListenAndServe Error: %v", err)
+	var err error
+	if listenErr := server.ListenAndServe(); !errors.Is(listenErr, http.ErrServerClosed) {
+		err = errors.Join(err, listenErr)
 	}
 
-	<-closed
+	cancel(errors.New("ListenAndServe exit"))
+
+	if shutdownErr := <-shutdownErrCh; shutdownErr != nil {
+		err = errors.Join(err, shutdownErr)
+	}
+
+	return err
 }
