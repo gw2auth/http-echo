@@ -1,4 +1,4 @@
-FROM golang:1.26-trixie AS builder
+FROM golang:1.26 AS builder
 
 WORKDIR /build
 
